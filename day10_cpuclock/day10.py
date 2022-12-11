@@ -1,7 +1,7 @@
 
 cycle = 0
 register = 1
-crt = [ ["."]*40 for _ in range(6)]
+crt = [ [" "]*40 for _ in range(6)]
 strengths = []
 
 def print_crt(crt):
