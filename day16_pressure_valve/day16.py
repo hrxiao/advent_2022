@@ -1,5 +1,8 @@
+from functools import lru_cache
+
 valves = {}
 valve_names = set()
+good_valves = {}
 
 def make_valve(line):
 	line = line.strip().split()
@@ -7,7 +10,6 @@ def make_valve(line):
 		"name": line[1],
 		"rate": int(line[4][5:-1]),
 		"tunnels": [v.strip(",") for v in line[9:]],
-		"index": -1,
 	}
 	return valve
 
@@ -17,54 +19,57 @@ with open("day16_input.txt") as f:
 		valve = make_valve(line)
 		valves[valve["name"]] = valve
 		valve_names.add(valve["name"])
+		if valve["rate"] > 0:
+			good_valves[valve["name"]] = valve
 
-def make_dist_matrix(valves, valve_names):
-	valve_names_list = sorted(list(valve_names))
-	for i in range(len(valve_names)):
-		valves[valve_names_list[i]]["index"] = i
-	dist_matrix = [[-1] * len(valve_names) for _ in range(len(valve_names))]
-	for valve in valves.values():
-		dist_matrix[valve["index"]][valve["index"]] = 0
-
+# poor mans floyd warshall
+def make_dist_map(valves, valve_names):
+	dist_map = {}
+	# start from each valve
 	for start_node in valves.keys():
-		start_valve = valves[start_node]
+		# valve to itself is 2 steps
+		dist_map[(start_node, start_node)] = 2
 		not_visited = set(valves.keys())
 		to_visits = set(valves[start_node]["tunnels"])
 		step = 0
 		not_visited.remove(start_node)
 		while len(not_visited) > 0:
-			# print(f"{not_visited=}")
-			# print(f"{to_visits=}\n")
 			step += 1
 			next_visits = set()
 			for to_visit in to_visits:
 				visiting = valves[to_visit]
-				dist_matrix[start_valve["index"]][visiting["index"]] = step
-				dist_matrix[visiting["index"]][start_valve["index"]] = step
+				dist_map[(start_node, to_visit)] = step			
+				dist_map[(to_visit, start_node)] = step
 				not_visited.remove(to_visit)
 				for visit_tunnel in visiting["tunnels"]:
 					if visit_tunnel in not_visited and visit_tunnel not in to_visits:
 						next_visits.add(visit_tunnel)
-
 			to_visits = next_visits
-	return dist_matrix
+	return dist_map
 
-def print_matrix(matrix):
-	valve_names_list = sorted(list(valve_names))
-	to_print = [" "]
-	to_print.extend(valve_names_list)
-	print(to_print)
-	for i in range(len(matrix)):
-		to_print = [valve_names_list[i]]
-		to_print.extend(matrix[i])
-		print(to_print)
-
-dist_matrix = make_dist_matrix(valves, valve_names)
-print_matrix(dist_matrix)
-
-valves_by_rate = sorted(list(valves.values()), key=lambda valve: valve["rate"], reverse=True)
-print(valves_by_rate)
+dist_map = make_dist_map(valves, valve_names)
 
 
-minutes = 30
-start = "AA"
+# Algorithm by
+# https://topaz.github.io/paste/#XQAAAQDfAgAAAAAAAAA0m0pnuFI8c82uPD0wiI6r5tRTRja98xwzlfwFtjHHMXROBlAd++OM5E2aWHrlz38tgjgBrDMkBDPm5k7eRTLnCaSEUZUXANmWw6a7dmZdD+qaJFp7E26PQ9Ml4fpikPmCeDnULBn3YHI/yLHbVDEdzTxQZhxa+aFb3fX8qpx50mBxYGkYIvkYoHqoND3JEEe2PE8yfBjpZNgC+Vp30p9nwCUTCSQrDlaj6RCgZyoOK4E/0QTzzMTpAvuwXfRpaEG4N87Y0Rr49K516SKwkvAatNXD/MBZ2thEgjpndUPRb/SA5eo0d/OjeyIlhgFibQYYZ4KHpAn3uPUJ9CSsdyr6/TnmqI95UsPYgMPNLWjLQmy3+35ne8bKXq3SHASY+91H7LIAFMGp5QhI53Qkvfo+WAJDHW6OTabv0QXSAvP57DAnBBAMS+R0W4H3bc4fRaVa+nfP7ifAKLKxGr1w3jHedPV2HRQ4bLOdmkB0vO9OReM6lNK7nTH1EF91P5PwmenHxXGnjjhp12efsEpBwFP/p/Vk7z/7zxwFT7c5+MBovbAHfbFNxQZtnVlrS1cGvRmx5bufXqoglHIp7DFNWyZVPp8TE5qiC8hSEyzLr/+x2pjq
+
+# recursively find the pressure by visiting all other valves and updating time
+# remaining with the cost of visiting other valves
+@lru_cache(maxsize=None)
+def max_valve_pressure(curr_valve, time_left, unopened_valves, has_elephant):
+	# check max with if elephant by itself is to visit the unopened valves
+	max_pressure = 0 if not has_elephant else max_valve_pressure("AA", 26, unopened_valves, False)
+	for unopened_valve in unopened_valves:
+		time_to_valve = dist_map[(curr_valve, unopened_valve)]
+		if time_to_valve >= time_left:
+			continue
+		new_time_left = time_left - 1 - time_to_valve
+		pressure_from_valve = valves[unopened_valve]["rate"] * (time_left - 1 - time_to_valve)
+		recurse_pressure = max_valve_pressure(unopened_valve, new_time_left, unopened_valves - {unopened_valve}, has_elephant)
+		total_pressure = pressure_from_valve + recurse_pressure
+		if total_pressure > max_pressure:
+			max_pressure = total_pressure
+	return max_pressure
+
+print(f"max_valve_pressure={max_valve_pressure('AA', 30, frozenset(good_valves.keys()), False)}")
+print(f"max_valve_pressure_duo={max_valve_pressure('AA', 26, frozenset(good_valves.keys()), True)}")
